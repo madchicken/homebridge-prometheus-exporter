@@ -1,3 +1,4 @@
+use std::intrinsics::try;
 use clap::{Parser};
 
 mod httpserver;
@@ -25,10 +26,6 @@ struct Config {
 
 #[tokio::main]
 async fn main() {
-    let args = Config::parse();
-
-    match args {
-        Ok(config) => httpserver::start_metrics_server(config.username, config.password, config.uri, config.port).await,
-        Err(error) => println!("{:?}", error)
-    }
+    let config = Config::parse();
+    httpserver::start_metrics_server(config.username, config.password, config.uri, config.port).await
 }
