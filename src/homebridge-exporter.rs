@@ -1,4 +1,3 @@
-use std::intrinsics::try;
 use clap::{Parser};
 
 mod httpserver;
