@@ -18,7 +18,7 @@ struct Config {
     #[clap(long, value_parser, default_value = "http://192.168.0.2:8080")]
     uri: String,
 
-    #[clap(short, long, value_parser, default_value = "8001")]
+    #[clap(long, value_parser, default_value = "8001")]
     port: u16,
 }
 
