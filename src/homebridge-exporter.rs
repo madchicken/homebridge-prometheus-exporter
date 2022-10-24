@@ -15,7 +15,7 @@ struct Config {
     password: String,
 
     /// Homebridge uri
-    #[clap(long, value_parser, default_value = "http://192.168.0.2:8080")]
+    #[clap(long, value_parser)]
     uri: String,
 
     #[clap(long, value_parser, default_value = "8001")]
