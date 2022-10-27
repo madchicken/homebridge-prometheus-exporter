@@ -17,7 +17,7 @@ pub mod session {
 
     #[derive(Clone)]
     pub struct Session {
-        token: Option<Token>,
+        pub token: Option<Token>,
         username: String,
         password: String,
         uri: String,
@@ -48,13 +48,22 @@ pub mod session {
             }
         }
 
-        pub async fn get_token(&mut self) -> &Token {
+        pub async fn get_token(&mut self) -> Result<&Token, String> {
             if !self.is_valid() {
                 println!("Token is invalid, fetching a new token");
-                let result = login(self.username.to_string(), self.password.to_string(), self.uri.to_string()).await.unwrap_or_else(|e| panic!("{}", e));
-                let _ = self.token.insert(result);
+                let result = login(self.username.to_string(), self.password.to_string(), self.uri.to_string()).await;
+                match result {
+                    Ok(t) => {
+                        let _ = self.token.insert(t);
+                    }
+                    Err(e) => {
+                        self.token = None;
+                        println!("{}", e);
+                        return Err(format!("{}", e))
+                    },
+                }
             }
-            self.token.as_ref().unwrap()
+            Ok(self.token.as_ref().unwrap())
         }
 
     }
@@ -129,7 +138,7 @@ pub async fn login(username: String, password: String, uri: String) -> Result<se
     let client = Client::new();
     let response = client.request(request).await.unwrap();
     if !response.status().is_success() {
-        return Err(format!("Error while fetching token. Error code: {}",response.status()))
+        return Err(format!("Error while fetching token. Error code: {}", response.status()))
     }
 
     let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
@@ -147,14 +156,20 @@ pub async fn get_all_accessories(token: &session::Token, uri: String) -> Result<
         .body(Body::empty())
         .unwrap();
 
-    let response = client.request(request).await.unwrap();
-    if !response.status().is_success() {
-        return Err(format!("Error while fetching token. Error code: {}",response.status()))
-    }
+    let result = client.request(request).await;
+    match result {
+        Ok(response) => {
+            if !response.status().is_success() {
+                println!("Error while fetching token. Error code: {}",response.status());
+                return Err(format!("Error while fetching accessories. Error code: {}",response.status()))
+            }
 
-    let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
-    let body = String::from_utf8(body_bytes.to_vec()).unwrap();
-    let accessories: Vec<Accessory> = serde_json::from_str(&body).unwrap();
-    println!("Fetched {} accessories", accessories.len());
-    return Ok(accessories)
+            let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
+            let body = String::from_utf8(body_bytes.to_vec()).unwrap();
+            let accessories: Vec<Accessory> = serde_json::from_str(&body).unwrap();
+            println!("Fetched {} accessories", accessories.len());
+            Ok(accessories)
+        }
+        Err(e) => Err(e.to_string())
+    }
 }
