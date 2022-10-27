@@ -1,6 +1,7 @@
 use std::process::exit;
 use inflector::cases::snakecase::to_snake_case;
 use prometheus_client::{encoding::text::encode, registry::Registry};
+use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use warp::{Filter, Rejection};
 use warp::reject::Reject;
@@ -53,22 +54,19 @@ async fn build_registry(mut session: Session, uri: String) -> Result<Registry, S
                 Ok(accessories) => {
                     for accessory in accessories {
                         let services = accessory.service_characteristics;
-                        let values = accessory.values.as_object().to_owned().unwrap();
 
                         for service in services {
-                            let metric: Gauge<f64> = Gauge::default();
-                            let metric_name = format!("{}_{}", to_snake_case(&service.service_name.to_string()), to_snake_case(&service.type_.to_string()));
-
-                            for key in values.keys() {
-                                let value = values.get(key).unwrap();
-                                let value_as_float = value.as_f64().unwrap_or_else(|| 0.0);
+                            if !service.format.eq_ignore_ascii_case("string") { // ignore string service types
+                                let metric = Family::<Vec<(String, String)>, Gauge<f64>>::default();
+                                let metric_name = format!("{}_{}", to_snake_case(&service.service_type.to_string()), to_snake_case(&service.type_.to_string()));
+                                let value_as_float = service.value.as_f64().unwrap_or_else(|| 0.0);
                                 registry.register(
                                     metric_name.to_string(),
                                     format!("{}", service.description),
                                     Box::new(metric.clone()),
                                 );
-                                metric.set(value_as_float);
 
+                                metric.get_or_create(&vec![("name".to_owned(), to_snake_case(&service.service_name.to_string()).to_owned())]).set(value_as_float);
                             }
                         }
                     }
