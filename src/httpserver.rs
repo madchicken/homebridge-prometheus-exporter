@@ -11,8 +11,10 @@ use crate::homebridge::session::{Session};
 
 /// Start a HTTP server to report metrics.
 pub async fn start_metrics_server(username: String, password: String, uri: String, port: u16) {
+    let session = Session::new(username.to_string(), password.to_string(), uri.to_string()).await;
+
     let metrics_path = warp::path!("metrics")
-        .and_then(move || metrics_get(username.to_string(), password.to_string(), uri.to_string()));
+        .and_then(move || metrics_get(session.clone(), uri.to_string()));
 
     println!("Serving /metrics at 127.0.0.1:{}", port);
     warp::serve(metrics_path)
@@ -21,16 +23,15 @@ pub async fn start_metrics_server(username: String, password: String, uri: Strin
 
 }
 
-async fn metrics_get(username: String, password: String, uri: String) -> Result<impl warp::Reply, Infallible> {
+async fn metrics_get(session: Session, uri: String) -> Result<impl warp::Reply, Infallible> {
     let mut buf = Vec::new();
-    let registry = build_registry(username.to_string(), password.to_string(), uri.to_string()).await;
+    let registry = build_registry(session, uri.to_string()).await;
     encode(&mut buf, &registry).unwrap();
     Ok(warp::reply::with_header(std::str::from_utf8(buf.as_slice()).unwrap().to_string(), "content-type", "application/openmetrics-text; version=1.0.0; charset=utf-8"))
 }
 
-async fn build_registry(username: String, password: String, uri: String) -> Registry {
+async fn build_registry(mut session: Session, uri: String) -> Registry {
     let mut registry = <Registry>::with_prefix("homebridge");
-    let mut session = Session::new(username.to_string(), password.to_string(), uri.to_string());
     let token = session.get_token().await;
     let accessories = homebridge::get_all_accessories(&token, uri.to_string()).await.unwrap();
 

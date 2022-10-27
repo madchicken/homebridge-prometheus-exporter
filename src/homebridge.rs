@@ -15,8 +15,9 @@ pub mod session {
         pub expires_in: u64,
     }
 
+    #[derive(Clone)]
     pub struct Session {
-        token: Option<Box<Token>>,
+        token: Option<Token>,
         username: String,
         password: String,
         uri: String,
@@ -25,31 +26,35 @@ pub mod session {
 
     impl Session {
 
-        pub fn new(username: String, password: String, uri: String) -> Session {
-            Session {
+        pub async fn new(username: String, password: String, uri: String) -> Session {
+            let mut session = Session {
                 token: None,
                 username: username.to_string(),
                 password: password.to_string(),
                 uri: uri.to_string(),
                 created_at: SystemTime::now(),
-            }
+            };
+            let _ = session.get_token().await;
+            session
         }
 
         pub fn is_valid(&self) -> bool {
             if self.token.is_some() {
-                SystemTime::now().duration_since(self.created_at).unwrap()
-                    .ge(&Duration::from_secs(self.token.as_ref().unwrap().expires_in))
+                let duration = SystemTime::now().duration_since(self.created_at).unwrap().as_secs();
+                let expiration = Duration::from_secs(self.token.as_ref().unwrap().expires_in).as_secs();
+                duration.le(&expiration) // duration is valid if less than expiration
             } else {
                 false
             }
         }
 
-        pub async fn get_token(&mut self) -> Box<Token> {
+        pub async fn get_token(&mut self) -> &Token {
             if !self.is_valid() {
+                println!("Token is invalid, fetching a new token");
                 let result = login(self.username.to_string(), self.password.to_string(), self.uri.to_string()).await.unwrap_or_else(|e| panic!("{}", e));
-                let _ = self.token.insert(Box::new(result));
+                let _ = self.token.insert(result);
             }
-            self.token.clone().unwrap()
+            self.token.as_ref().unwrap()
         }
 
     }
