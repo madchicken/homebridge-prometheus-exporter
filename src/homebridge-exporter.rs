@@ -12,18 +12,19 @@ pub struct Config {
     #[clap(short, long, value_parser)]
     username: String,
 
-    /// Homebridge username
+    /// Homebridge password
     #[clap(short, long, value_parser)]
     password: String,
 
-    /// Homebridge uri
-    #[clap(long, value_parser, default_value = "http://localhost")]
+    /// Homebridge UI uri
+    #[clap(long, value_parser, default_value = "http://localhost:8581")]
     uri: String,
 
-    #[clap(long, value_parser, default_value = "8581")]
+    /// Metrics webserver port (service /metrics for Prometheus scraper)
+    #[clap(long, value_parser, default_value = "8001")]
     port: u16,
 
-    /// metrics prefix
+    /// Registry metrics prefix
     #[clap(long, value_parser, default_value = "homebrige")]
     prefix: String,
 }
