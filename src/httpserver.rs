@@ -6,24 +6,27 @@ use prometheus_client::metrics::gauge::Gauge;
 use warp::{Filter, Rejection};
 use warp::reject::Reject;
 
-use crate::homebridge;
+use crate::{Config, homebridge};
 use crate::homebridge::session::{Session};
 
 /// Start a HTTP server to report metrics.
-pub async fn start_metrics_server(username: String, password: String, uri: String, port: u16) {
-    let session = Session::new(username.to_string(), password.to_string(), uri.to_string()).await;
+pub async fn start_metrics_server(config: Config) {
+    let session = Session::new(config.username.to_string(), config.password.to_string(), config.uri.to_string()).await;
     let option = session.token.clone();
     match option {
         Some(_t) => {
             let metrics_path = warp::path!("metrics")
-                .and_then(move || metrics_get(session.clone(), uri.to_string()));
+                .and_then(move || metrics_get(session.clone(), config.uri.to_string(), config.prefix.to_string()));
 
-            println!("Serving /metrics at 127.0.0.1:{}", port);
+            println!("Serving /metrics at 127.0.0.1:{}", config.port);
             warp::serve(metrics_path)
-                .run(([127, 0, 0, 1], port))
+                .run(([127, 0, 0, 1], config.port))
                 .await;
         }
-        None => exit(1)
+        None => {
+            println!("There was an error while initializing Homebridge APIs. Please double check the username, the password and the uri you provided as arguments to this program.");
+            exit(1)
+        }
     }
 }
 
@@ -32,9 +35,9 @@ struct GenericError;
 
 impl Reject for GenericError {}
 
-async fn metrics_get(session: Session, uri: String) -> Result<impl warp::Reply, Rejection> {
+async fn metrics_get(session: Session, uri: String, prefix: String) -> Result<impl warp::Reply, Rejection> {
     let mut buf = Vec::new();
-    let result = build_registry(session, uri.to_string()).await;
+    let result = build_registry(session, uri.to_string(), prefix.to_string()).await;
     match result {
         Ok(registry) => {
             encode(&mut buf, &registry).unwrap();
@@ -44,8 +47,8 @@ async fn metrics_get(session: Session, uri: String) -> Result<impl warp::Reply, 
     }
 }
 
-async fn build_registry(mut session: Session, uri: String) -> Result<Registry, String> {
-    let mut registry = <Registry>::with_prefix("homebridge");
+async fn build_registry(mut session: Session, uri: String, prefix: String) -> Result<Registry, String> {
+    let mut registry = <Registry>::with_prefix(prefix.as_str());
     let result = session.get_token().await;
     match result {
         Ok(token) => {

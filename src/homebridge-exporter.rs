@@ -7,7 +7,7 @@ mod homebridge;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
-struct Config {
+pub struct Config {
     /// Homebridge username
     #[clap(short, long, value_parser)]
     username: String,
@@ -17,16 +17,20 @@ struct Config {
     password: String,
 
     /// Homebridge uri
-    #[clap(long, value_parser)]
+    #[clap(long, value_parser, default_value = "http://localhost")]
     uri: String,
 
-    #[clap(long, value_parser, default_value = "8001")]
+    #[clap(long, value_parser, default_value = "8581")]
     port: u16,
+
+    /// metrics prefix
+    #[clap(long, value_parser, default_value = "homebrige")]
+    prefix: String,
 }
 
 
 #[tokio::main]
 async fn main() {
     let config = Config::parse();
-    httpserver::start_metrics_server(config.username, config.password, config.uri, config.port).await
+    httpserver::start_metrics_server(config).await
 }
