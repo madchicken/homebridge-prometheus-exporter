@@ -24,3 +24,18 @@ OPTIONS:
     -V, --version                Print version information
 ```
 
+## Build from source
+This project is written in Rust and uses Cargo to compile and link the final executable.
+To be able to build the final executable, you need first to install Rust, following the instructions [here](https://www.rust-lang.org/tools/install).
+
+Once your environment is ready, you can build the project by running the command:
+
+    cargo build
+
+To build in release more, just add `-r` to the above command.
+If you want to build only a specific target, specify it using the `--target` parameter:
+
+    cargo build --target x86_64-apple-darwin
+
+Supported targets are defined in the [cargo config file](blob/master/.cargo/config.toml).
+
