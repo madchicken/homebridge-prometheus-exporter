@@ -33,5 +33,6 @@ pub struct Config {
 #[tokio::main]
 async fn main() {
     let config = Config::parse();
-    httpserver::start_metrics_server(config).await
+    println!("Parsed command line: {:?}", config);
+    let _server = httpserver::start_metrics_server(config).await;
 }
