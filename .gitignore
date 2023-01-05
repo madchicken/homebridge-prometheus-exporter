@@ -1,3 +1,4 @@
 /target
 .idea
 homebridge-exporter
+authorization-keys.yml

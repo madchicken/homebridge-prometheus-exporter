@@ -9,6 +9,22 @@ use actix_web::http::StatusCode;
 use crate::{Config, homebridge};
 use crate::homebridge::session::{Session};
 
+use serde::{Deserialize, Serialize};
+use serde_yaml::{self};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct AuthorizationKeys {
+    keys: Vec<String>,
+}
+
+fn load_keys() -> AuthorizationKeys {
+    let f = std::fs::File::open("authorization-keys.yml").expect("Could not open file.");
+    let keys: AuthorizationKeys = serde_yaml::from_reader(f).expect("Could not read values.");
+
+    println!("{:?}", keys);
+    return keys;
+}
+
 /// Start a HTTP server to report metrics.
 pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
     println!("Creating session");
@@ -20,13 +36,14 @@ pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
     let session: Session = Session::new(username, password, uri);
     println!("Session created {:?}", session);
     let shared_session = Data::new(Mutex::new(session));
-
+    let keys: AuthorizationKeys = load_keys();
 
     println!("Serving /metrics at 127.0.0.1:{}", port);
     HttpServer::new(move || {
         App::new()
             .app_data(shared_session.clone())
             .app_data(shared_config.clone())
+            .app_data(keys.clone())
             .service(web::resource("/metrics").route(web::get().to(metrics_get)))
             .service(web::resource("/restart").route(web::get().to(restart)))
     })
@@ -35,16 +52,40 @@ pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
         .await
 }
 
-async fn restart(session: Data<Mutex<Session>>, config: Data<Config>, _req: HttpRequest) -> actix_web::Result<HttpResponse> {
-    let token = session.lock().unwrap().get_token().await.unwrap();
-    let result = homebridge::restart(token, config.uri.clone()).await;
-    match result {
-        Ok(_b) => Ok(HttpResponse::build(StatusCode::OK).body("done")),
-        Err(e) => Ok(HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e))
+fn check_bearer_token(req: HttpRequest, keys: Data<AuthorizationKeys>) -> bool {
+    if req.headers().contains_key("Authorization") {
+        let bearer = req.headers().get("Authorization").unwrap().to_str().unwrap();
+        let parts: Vec<_> = bearer.split(' ').collect();
+        if parts[0].eq("Bearer") {
+            let req_key = parts[1];
+            let index = keys.keys
+                .iter()
+                .position(|key| key.eq(req_key));
+            return match index {
+                Some(_) => true,
+                None => false
+            }
+        }
+        return false;
+    }
+    return false;
+}
+
+async fn restart(session: Data<Mutex<Session>>, config: Data<Config>, keys: Data<AuthorizationKeys>, req: HttpRequest) -> actix_web::Result<HttpResponse> {
+    match check_bearer_token(req, keys) {
+        true => {
+            let token = session.lock().unwrap().get_token().await.unwrap();
+            let result = homebridge::restart(token, config.uri.clone()).await;
+            match result {
+                Ok(_b) => Ok(HttpResponse::build(StatusCode::OK).body("done")),
+                Err(e) => Ok(HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e))
+            }
+        }
+        false => Ok(HttpResponse::build(StatusCode::UNAUTHORIZED).body("Unauthorized request, please provide a valid token."))
     }
 }
 
-async fn metrics_get(session: Data<Mutex<Session>>, config: Data<Config>, _req: HttpRequest) -> actix_web::Result<HttpResponse> {
+async fn metrics_get(session: Data<Mutex<Session>>, config: Data<Config>, _keys: Data<AuthorizationKeys>, _req: HttpRequest) -> actix_web::Result<HttpResponse> {
     let mut buf = Vec::new();
     let token = session.lock().unwrap().get_token().await.unwrap();
     let result = build_registry(token, config.uri.clone(), config.prefix.clone()).await;
