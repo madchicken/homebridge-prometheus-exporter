@@ -45,7 +45,7 @@ pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
             .app_data(shared_config.clone())
             .app_data(keys.clone())
             .service(web::resource("/metrics").route(web::get().to(metrics_get)))
-            .service(web::resource("/restart").route(web::get().to(restart)))
+            .service(web::resource("/restart").route(web::post().to(restart)))
     })
         .bind(("127.0.0.1", port))?
         .run()
