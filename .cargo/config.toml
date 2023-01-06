@@ -1,8 +1,2 @@
-[build]
-target = ["x86_64-apple-darwin", "armv7-unknown-linux-musleabihf", "aarch64-apple-darwin"]
-
 [net]
 git-fetch-with-cli = true
-
-[target.armv7-unknown-linux-musleabihf]
-linker = "x86_64-linux-musl-gcc"

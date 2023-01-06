@@ -21,7 +21,7 @@ pub struct Config {
     uri: String,
 
     /// Metrics webserver port (service /metrics for Prometheus scraper)
-    #[clap(long, value_parser, default_value = "8001")]
+    #[clap(long, value_parser, default_value = "9123")]
     port: u16,
 
     /// Registry metrics prefix
