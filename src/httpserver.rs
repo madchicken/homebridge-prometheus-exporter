@@ -27,23 +27,24 @@ fn load_keys() -> AuthorizationKeys {
 
 /// Start a HTTP server to report metrics.
 pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
-    println!("Creating session");
+    debug!("Creating session");
     let port = config.port;
     let uri = config.uri.clone();
     let password = config.password.clone();
     let username = config.username.clone();
     let shared_config = Data::new(config);
-    let session: Session = Session::new(username, password, uri);
-    println!("Session created {:?}", session);
-    let shared_session = Data::new(Mutex::new(session));
     let keys: AuthorizationKeys = load_keys();
+    let shared_keys = Data::new(keys);
+    let session: Session = Session::new(username, password, uri);
+    debug!("Session created {:?}", session);
+    let shared_session = Data::new(Mutex::new(session));
 
     println!("Serving /metrics at 127.0.0.1:{}", port);
     HttpServer::new(move || {
         App::new()
             .app_data(shared_session.clone())
             .app_data(shared_config.clone())
-            .app_data(keys.clone())
+            .app_data(shared_keys.clone())
             .service(web::resource("/metrics").route(web::get().to(metrics_get)))
             .service(web::resource("/restart").route(web::post().to(restart)))
     })
@@ -126,7 +127,7 @@ async fn build_registry(token: String, uri: String, prefix: String) -> Result<Re
             Ok(registry)
         }
         Err(e) => {
-            println!("{}", e);
+            error!("{}", e);
             Err(format!("{}", e))
         }
     }

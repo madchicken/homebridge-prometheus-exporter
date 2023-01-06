@@ -1,7 +1,6 @@
 use serde::{Serialize, Deserialize};
 use serde_json::{json, Value};
 
-
 pub mod session {
     use std::time::{Duration, SystemTime};
     use serde::{Serialize, Deserialize};
@@ -146,7 +145,7 @@ pub async fn login(username: String, password: String, uri: String) -> Result<se
 
                 let body = response.text().unwrap();
                 let token: session::Token = serde_json::from_str(&body).unwrap();
-                println!("Fetched token {}. New token is valid for {} seconds", token.access_token,  token.expires_in);
+                debug!("Fetched token {}. New token is valid for {} seconds", token.access_token,  token.expires_in);
                 Ok(token)
             }
             Err(e) => Err(format!("Error while fetching token. Error code: {}, meg: {}", e.status().unwrap(), e.to_string()))
@@ -157,7 +156,7 @@ pub async fn login(username: String, password: String, uri: String) -> Result<se
 pub async fn get_all_accessories(token: String, uri: String) -> Result<Vec<Accessory>, String> {
     tokio::task::spawn_blocking(move || {
         let client = reqwest::blocking::Client::new();
-        println!("Fetching accessories using token {}", token);
+        debug!("Fetching accessories using token {}", token);
         let result = client.get(format!("{}/api/accessories", uri))
             .header("content-type", "application/json")
             .header("Authorization", format!("Bearer {}", token))
@@ -166,13 +165,13 @@ pub async fn get_all_accessories(token: String, uri: String) -> Result<Vec<Acces
         match result {
             Ok(response) => {
                 if !response.status().is_success() {
-                    println!("Error while fetching token. Error code: {}", response.status());
+                    error!("Error while fetching token. Error code: {}", response.status());
                     return Err(format!("Error while fetching accessories. Error code: {}", response.status()))
                 }
 
                 let body = response.text().unwrap();
                 let accessories: Vec<Accessory> = serde_json::from_str(&body).unwrap();
-                println!("Fetched {} accessories", accessories.len());
+                debug!("Fetched {} accessories", accessories.len());
                 Ok(accessories)
             }
             Err(e) => Err(e.to_string())
@@ -183,14 +182,20 @@ pub async fn get_all_accessories(token: String, uri: String) -> Result<Vec<Acces
 pub async fn restart(token: String, uri: String) -> Result<bool, String> {
     tokio::task::spawn_blocking(move || {
         let client = reqwest::blocking::Client::new();
-
+        debug!("Warning: restarting homebridge server using token {} ", token);
         let response_result = client.put(format!("{}/api/server/restart", uri))
             .header("content-type", "application/json")
             .header("Authorization", format!("Bearer {}", token))
+            .body("{}")
             .send();
 
         match response_result {
-            Ok(_response) => Ok(true),
+            Ok(response) => {
+                if response.status().is_success() {
+                    return Ok(true);
+                }
+                Err(format!("{}", response.text().unwrap().as_str()))
+            },
             Err(e) => Err(e.to_string())
         }
     }).await.unwrap()

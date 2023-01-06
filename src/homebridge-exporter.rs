@@ -1,4 +1,5 @@
 extern crate core;
+#[macro_use] extern crate log;
 
 use clap::{Parser};
 
@@ -27,12 +28,19 @@ pub struct Config {
     /// Registry metrics prefix
     #[clap(long, value_parser, default_value = "homebrige")]
     prefix: String,
+
+    /// Debug mode
+    #[clap(long, value_parser, default_value = "false")]
+    debug: bool,
 }
 
 
-#[tokio::main]
+#[actix_web::main]
 async fn main() {
     let config = Config::parse();
-    println!("Parsed command line: {:?}", config);
+    let level = if config.debug == true { "debug" } else { "info" };
+    std::env::set_var("RUST_LOG", level);
+    env_logger::init();
+    debug!("Parsed command line: {:?}", config);
     let _server = httpserver::start_metrics_server(config).await;
 }
