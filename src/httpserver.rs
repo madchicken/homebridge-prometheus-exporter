@@ -18,11 +18,20 @@ struct AuthorizationKeys {
 }
 
 fn load_keys() -> AuthorizationKeys {
-    let f = std::fs::File::open("authorization-keys.yml").expect("Could not open authorization key file.");
-    let keys: AuthorizationKeys = serde_yaml::from_reader(f).expect("Could not read values from authorization key file.");
-
-    println!("{:?}", keys);
-    return keys;
+    let f = std::fs::File::open("authorization-keys.yml");
+    match f {
+        Ok(file) => {
+            let keys: AuthorizationKeys = serde_yaml::from_reader(file).expect("Could not read values from authorization key file.");
+            debug!("{:?}", keys);
+            keys
+        }
+        Err(e) => {
+            error!("Could not open authorization key file. {}", e.to_string());
+            AuthorizationKeys {
+                keys: vec![]
+            }
+        }
+    }
 }
 
 /// Start a HTTP server to report metrics.
