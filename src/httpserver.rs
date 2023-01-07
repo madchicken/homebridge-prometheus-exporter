@@ -18,8 +18,8 @@ struct AuthorizationKeys {
 }
 
 fn load_keys() -> AuthorizationKeys {
-    let f = std::fs::File::open("authorization-keys.yml").expect("Could not open file.");
-    let keys: AuthorizationKeys = serde_yaml::from_reader(f).expect("Could not read values.");
+    let f = std::fs::File::open("authorization-keys.yml").expect("Could not open authorization key file.");
+    let keys: AuthorizationKeys = serde_yaml::from_reader(f).expect("Could not read values from authorization key file.");
 
     println!("{:?}", keys);
     return keys;
@@ -39,7 +39,8 @@ pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
     debug!("Session created {:?}", session);
     let shared_session = Data::new(Mutex::new(session));
 
-    println!("Serving /metrics at 127.0.0.1:{}", port);
+    let bind_address = "0.0.0.0";
+    info!("Serving /metrics at http://{}:{}", bind_address, port);
     HttpServer::new(move || {
         App::new()
             .app_data(shared_session.clone())
@@ -48,7 +49,7 @@ pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
             .service(web::resource("/metrics").route(web::get().to(metrics_get)))
             .service(web::resource("/restart").route(web::post().to(restart)))
     })
-        .bind(("127.0.0.1", port))?
+        .bind((bind_address, port))?
         .run()
         .await
 }
