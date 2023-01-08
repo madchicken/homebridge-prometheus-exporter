@@ -26,7 +26,8 @@ fn load_keys() -> AuthorizationKeys {
             keys
         }
         Err(e) => {
-            error!("Could not open authorization key file. {}", e.to_string());
+            warn!("Could not open authorization key file. {}", e.to_string());
+            warn!("Using an empty key set, authorization won't be available.");
             AuthorizationKeys {
                 keys: vec![]
             }
