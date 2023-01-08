@@ -48,7 +48,7 @@ pub mod session {
 
         pub async fn get_token(&mut self) -> Result<String, String> {
             if !self.is_valid() {
-                println!("Token is invalid, fetching a new token");
+                info!("Token is invalid, fetching a new token");
                 let result = login(self.username.to_string(), self.password.to_string(), self.uri.to_string()).await;
                 match result {
                     Ok(t) => {
@@ -58,7 +58,7 @@ pub mod session {
                     }
                     Err(e) => {
                         self.token.replace_range(..self.token.len(), "");
-                        println!("{}", e);
+                        error!("{}", e);
                         return Err(format!("{}", e))
                     },
                 }
