@@ -22,6 +22,7 @@ OPTIONS:
     -V, --version                Print version information
 ```
 This software scrapes all the accessories from homebridge APIs and creates prometheus metrics out of all services information.
+All the metrics are then exposed under the standard path `/metrics` by the embedded HTTP server.
 
 ## /restart endpoint
 The exporter also exposes an additional endpoint that you can use to restart your homebridge server in case you detect some problem with metric values (for example from Prometheus AlertManager).
