@@ -1,8 +1,3 @@
-<p style="display: flex; align-items: center; align-content: center">
-  <a href="https://homebridge.io"><img src="https://raw.githubusercontent.com/homebridge/branding/master/logos/homebridge-color-round-stylized.png" height="140"></a>
-  <a href="//prometheus.io" target="_blank"><img alt="Prometheus" src="https://raw.githubusercontent.com/prometheus/prometheus/main/documentation/images/prometheus-logo.svg"></a><br>
-</p>
-
 # Prometheus Exporter for Homebridge
 A simple exporter for Prometheus that reads information about all your devices and exports all values as Prometheus metrics.
 
@@ -14,15 +9,36 @@ USAGE:
     homebridge-exporter [OPTIONS] --username <USERNAME> --password <PASSWORD>
 
 OPTIONS:
+        --debug                  Debug mode (displays additional log lines)
     -h, --help                   Print help information
+        --keyfile <KEYFILE>      Authorization keys file. Default to authorization-keys.yml in the
+                                 current working directory [default: authorization-keys.yml]
     -p, --password <PASSWORD>    Homebridge password
         --port <PORT>            Metrics webserver port (service /metrics for Prometheus scraper)
-                                 [default: 8001]
+                                 [default: 9123]
         --prefix <PREFIX>        Registry metrics prefix [default: homebrige]
     -u, --username <USERNAME>    Homebridge username
         --uri <URI>              Homebridge UI uri [default: http://localhost:8581]
     -V, --version                Print version information
 ```
+This software scrapes all the accessories from homebridge APIs and creates prometheus metrics out of all services information.
+All the metrics are then exposed under the standard path `/metrics` by the embedded HTTP server.
+
+## /restart endpoint
+The exporter also exposes an additional endpoint that you can use to restart your homebridge server in case you detect some problem with metric values (for example from Prometheus AlertManager).
+The endpoint is mapped at `/restart` path and must be used sending a POST request, containing an Authorization header holding a bearer token you should generate and put inside the file `authorization-keys.yaml` (or in your custom yaml file you specified in the `--keyfile` parameter) .
+An example of the content of this file is this:
+
+```yaml
+keys:
+  - 1d3f962f-bdcf-4f08-85ce-3e109f4e8f62
+```
+You can then use this CURL to trigger your Homebridge instance to restart:
+
+```shell
+curl -X POST -H "Authorization: Bearer 1d3f962f-bdcf-4f08-85ce-3e109f4e8f62" http://YOUR_IP:9123/restart
+```
+**NOTE**: if the key file does not exist the `/restart` endpoint won't do anything.  
 
 ## Build from source
 This project is written in Rust and uses Cargo to compile and link the final executable.
