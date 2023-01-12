@@ -4,6 +4,7 @@ use prometheus_client::{encoding::text::encode, registry::Registry};
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use actix_web::{web, App, HttpServer, HttpResponse, web::Data, HttpRequest};
+use actix_web::http::header::HeaderMap;
 use actix_web::http::StatusCode;
 
 use crate::{Config, homebridge};
@@ -64,13 +65,13 @@ pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
         .await
 }
 
-fn check_bearer_token(req: HttpRequest, keys: Data<AuthorizationKeys>) -> bool {
-    if req.headers().contains_key("Authorization") {
-        let bearer = req.headers().get("Authorization").unwrap().to_str().unwrap();
+fn check_bearer_token(headers: &HeaderMap, keys: &Vec<String>) -> bool {
+    if headers.contains_key("Authorization") {
+        let bearer = headers.get("Authorization").unwrap().to_str().unwrap();
         let parts: Vec<_> = bearer.split(' ').collect();
         if parts[0].eq("Bearer") {
             let req_key = parts[1];
-            let index = keys.keys
+            let index = keys
                 .iter()
                 .position(|key| key.eq(req_key));
             return match index {
@@ -84,7 +85,7 @@ fn check_bearer_token(req: HttpRequest, keys: Data<AuthorizationKeys>) -> bool {
 }
 
 async fn restart(session: Data<Mutex<Session>>, config: Data<Config>, keys: Data<AuthorizationKeys>, req: HttpRequest) -> actix_web::Result<HttpResponse> {
-    match check_bearer_token(req, keys) {
+    match check_bearer_token(req.headers(), &keys.keys) {
         true => {
             let token = session.lock().unwrap().get_token().await.unwrap();
             let result = homebridge::restart(token, config.uri.clone()).await;
@@ -141,5 +142,39 @@ async fn build_registry(token: String, uri: String, prefix: String) -> Result<Re
             error!("{}", e);
             Err(format!("{}", e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::http::header::{HeaderMap, HeaderName};
+    use reqwest::header::HeaderValue;
+    use crate::httpserver::check_bearer_token;
+
+    #[test]
+    fn check_bearer_token_find_the_right_token() {
+        let keys = vec![String::from("foo"), String::from("bar")];
+        let mut headers = HeaderMap::new();
+        headers.insert(HeaderName::from_static("authorization"), HeaderValue::from_str("Bearer bar").unwrap());
+
+        assert_eq!(check_bearer_token(&headers, &keys), true);
+    }
+
+    #[test]
+    fn check_bearer_token_fails_with_wrong_token() {
+        let keys = vec![String::from("foo"), String::from("bar")];
+        let mut headers = HeaderMap::new();
+        headers.insert(HeaderName::from_static("authorization"), HeaderValue::from_str("Bearer zoo").unwrap());
+
+        assert_eq!(check_bearer_token(&headers, &keys), false);
+    }
+
+    #[test]
+    fn check_bearer_token_fails_with_empty_keys() {
+        let keys = vec![];
+        let mut headers = HeaderMap::new();
+        headers.insert(HeaderName::from_static("authorization"), HeaderValue::from_str("Bearer zoo").unwrap());
+
+        assert_eq!(check_bearer_token(&headers, &keys), false);
     }
 }

@@ -38,6 +38,7 @@ You can then use this CURL to trigger your Homebridge instance to restart:
 ```shell
 curl -X POST -H "Authorization: Bearer 1d3f962f-bdcf-4f08-85ce-3e109f4e8f62" http://YOUR_IP:9123/restart
 ```
+**NOTE**: if the key file does not exist the `/restart` endpoint won't do anything.  
 
 ## Build from source
 This project is written in Rust and uses Cargo to compile and link the final executable.
