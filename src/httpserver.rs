@@ -17,8 +17,8 @@ struct AuthorizationKeys {
     keys: Vec<String>,
 }
 
-fn load_keys() -> AuthorizationKeys {
-    let f = std::fs::File::open("authorization-keys.yml");
+fn load_keys(keyfile_path: String) -> AuthorizationKeys {
+    let f = std::fs::File::open(keyfile_path);
     match f {
         Ok(file) => {
             let keys: AuthorizationKeys = serde_yaml::from_reader(file).expect("Could not read values from authorization key file.");
@@ -39,11 +39,11 @@ fn load_keys() -> AuthorizationKeys {
 pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
     debug!("Creating session");
     let port = config.port;
-    let uri = config.uri.clone();
     let password = config.password.clone();
     let username = config.username.clone();
+    let uri = config.uri.clone();
+    let keys: AuthorizationKeys = load_keys(config.keyfile.clone());
     let shared_config = Data::new(config);
-    let keys: AuthorizationKeys = load_keys();
     let shared_keys = Data::new(keys);
     let session: Session = Session::new(username, password, uri);
     debug!("Session created {:?}", session);

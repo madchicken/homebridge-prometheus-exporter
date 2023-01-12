@@ -9,8 +9,10 @@ USAGE:
     homebridge-exporter [OPTIONS] --username <USERNAME> --password <PASSWORD>
 
 OPTIONS:
-        --debug                  Debug mode
+        --debug                  Debug mode (displays additional log lines)
     -h, --help                   Print help information
+        --keyfile <KEYFILE>      Authorization keys file. Default to authorization-keys.yml in the
+                                 current working directory [default: authorization-keys.yml]
     -p, --password <PASSWORD>    Homebridge password
         --port <PORT>            Metrics webserver port (service /metrics for Prometheus scraper)
                                  [default: 9123]
@@ -19,10 +21,12 @@ OPTIONS:
         --uri <URI>              Homebridge UI uri [default: http://localhost:8581]
     -V, --version                Print version information
 ```
-This software scrapes all the accessories from homebridge APIs and creates prometheus metrics out of all services information. 
-It also exposes an additional endpoint that you can use to restart the homebridge server in case you detect some problem with metric values (for example from Prometheus AlertManager).
-The endpoint is `/restart` and must be used sending a POST request that contains an Authorization header containing a bearer token you should generate and put inside the file `authorization-keys.yaml`.
-An example of the content fo this file is this:
+This software scrapes all the accessories from homebridge APIs and creates prometheus metrics out of all services information.
+
+## /restart endpoint
+The exporter also exposes an additional endpoint that you can use to restart your homebridge server in case you detect some problem with metric values (for example from Prometheus AlertManager).
+The endpoint is mapped at `/restart` path and must be used sending a POST request, containing an Authorization header holding a bearer token you should generate and put inside the file `authorization-keys.yaml` (or in your custom yaml file you specified in the `--keyfile` parameter) .
+An example of the content of this file is this:
 
 ```yaml
 keys:
