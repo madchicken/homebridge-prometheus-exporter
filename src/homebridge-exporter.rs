@@ -25,7 +25,7 @@ pub struct Config {
     #[clap(long, value_parser, default_value = "9123")]
     port: u16,
     /// Registry metrics prefix
-    #[clap(long, value_parser, default_value = "homebrige")]
+    #[clap(long, value_parser, default_value = "homebridge")]
     prefix: String,
     /// Debug mode (displays additional log lines)
     #[clap(long, value_parser, default_value = "false")]

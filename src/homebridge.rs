@@ -170,6 +170,7 @@ pub async fn get_all_accessories(token: String, uri: String) -> Result<Vec<Acces
                 }
 
                 let body = response.text().unwrap();
+                debug!("Accessories JSON: {}", body);
                 let accessories: Vec<Accessory> = serde_json::from_str(&body).unwrap();
                 debug!("Fetched {} accessories", accessories.len());
                 Ok(accessories)
