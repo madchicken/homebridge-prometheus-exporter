@@ -2,3 +2,4 @@
 .idea
 homebridge-exporter
 authorization-keys.yml
+*.tgz
