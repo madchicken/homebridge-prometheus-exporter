@@ -26,7 +26,7 @@ All the metrics are then exposed under the standard path `/metrics` by the embed
 
 ## /restart endpoint
 The exporter also exposes an additional endpoint that you can use to restart your homebridge server in case you detect some problem with metric values (for example from Prometheus AlertManager).
-The endpoint is mapped at `/restart` path and must be used sending a POST request, containing an Authorization header holding a bearer token you should generate and put inside the file `authorization-keys.yaml` (or in your custom yaml file you specified in the `--keyfile` parameter) .
+The endpoint is mapped at `/restart` path and must be used sending a POST request, containing an Authorization header holding a bearer token you should generate and put inside the file `authorization-keys.yml` (or in your custom yaml file you specified in the `--keyfile` parameter) .
 An example of the content of this file is this:
 
 ```yaml

@@ -157,12 +157,23 @@ fn check_bearer_token(headers: &HeaderMap, keys: &Vec<String>) -> bool {
 async fn restart(headers: HeaderMap, State(state): State<AppState>) -> impl IntoResponse {
     match check_bearer_token(&headers, &state.keys.keys) {
         true => {
-            let token = state.session.lock().await.get_token().await.unwrap();
-            let result = homebridge::restart(token, state.config.uri.clone()).await;
-            match result {
-                Ok(_b) => (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], serde_json::to_string(&SuccessResponse {
-                    result: "done".to_string(),
-                }).unwrap()).into_response(),
+            let token_res = state.session.lock().await.get_token().await;
+            match token_res {
+                Ok(token) => {
+                    let result = homebridge::restart(token, state.config.uri.clone()).await;
+                    match result {
+                        Ok(_b) => (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], serde_json::to_string(&SuccessResponse {
+                            result: "done".to_string(),
+                        }).unwrap()).into_response(),
+                        Err(e) => {
+                            (StatusCode::INTERNAL_SERVER_ERROR,
+                             [(header::CONTENT_TYPE, "application/json")],
+                             serde_json::to_string(&ErrorResponse {
+                                 error: format!("{}", e),
+                             }).unwrap()).into_response()
+                        }
+                    }
+                }
                 Err(e) => {
                     (StatusCode::INTERNAL_SERVER_ERROR,
                      [(header::CONTENT_TYPE, "application/json")],

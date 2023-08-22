@@ -1,9 +1,11 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub mod session {
     use std::time::{Duration, SystemTime};
-    use serde::{Serialize, Deserialize};
+
+    use serde::{Deserialize, Serialize};
+
     use crate::homebridge::login;
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -20,11 +22,10 @@ pub mod session {
         password: String,
         uri: String,
         pub expires_in: u64,
-        pub created_at: SystemTime
+        pub created_at: SystemTime,
     }
 
     impl Session {
-
         pub fn new(username: String, password: String, uri: String) -> Session {
             Session {
                 token: String::from(""),
@@ -49,7 +50,10 @@ pub mod session {
         pub async fn get_token(&mut self) -> Result<String, String> {
             if !self.is_valid() {
                 info!("Token is invalid, fetching a new token");
-                let result = login(self.username.to_string(), self.password.to_string(), self.uri.to_string()).await;
+                let username = self.username.to_string();
+                let password = self.password.to_string();
+                let uri = self.uri.to_string();
+                let result = login(username, password, uri).await;
                 match result {
                     Ok(t) => {
                         self.token.replace_range(..self.token.len(), t.access_token.as_str());
@@ -59,13 +63,12 @@ pub mod session {
                     Err(e) => {
                         self.token.replace_range(..self.token.len(), "");
                         error!("{}", e);
-                        return Err(format!("{}", e))
-                    },
+                        return Err(format!("{}", e));
+                    }
                 }
             }
             Ok(self.token.clone())
         }
-
     }
 }
 
@@ -88,7 +91,7 @@ pub struct ServiceCharacteristics {
     pub can_read: bool,
     #[serde(rename(deserialize = "canWrite"))]
     pub can_write: bool,
-    pub ev: bool
+    pub ev: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -100,7 +103,7 @@ pub struct Instance {
     pub port: u16,
     pub services: Vec<Value>,
     #[serde(rename(deserialize = "connectionFailedCount"))]
-    pub connection_failed_count: u16
+    pub connection_failed_count: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -125,79 +128,73 @@ pub struct Accessory {
 }
 
 pub async fn login(username: String, password: String, uri: String) -> Result<session::Token, String> {
-    tokio::task::spawn_blocking(move || {
-        let login = json!({
+    let login = json!({
             "username": username,
             "password": password,
             "otp": "123"
         });
-        let client = reqwest::blocking::Client::new();
+    let client = reqwest::Client::new();
 
-        let response_result = client.post(format!("{}/api/auth/login", uri))
-            .header("content-type", "application/json")
-            .body(reqwest::blocking::Body::from(login.to_string())).send();
+    let response_result = client.post(format!("{}/api/auth/login", uri))
+        .header("content-type", "application/json")
+        .body(reqwest::Body::from(login.to_string())).send().await;
 
-        return match response_result {
-            Ok(response) => {
-                if !response.status().is_success() {
-                    return Err(format!("Error while fetching token. Error code: {}", response.status()))
-                }
-
-                let body = response.text().unwrap();
-                let token: session::Token = serde_json::from_str(&body).unwrap();
-                debug!("Fetched token {}. New token is valid for {} seconds", token.access_token,  token.expires_in);
-                Ok(token)
+    return match response_result {
+        Ok(response) => {
+            if !response.status().is_success() {
+                return Err(format!("Error while fetching token. Error code: {}", response.status()));
             }
-            Err(e) => Err(format!("Error while fetching token. Error code: {}, meg: {}", e.status().unwrap(), e.to_string()))
+
+            let body = response.text().await.unwrap();
+            let token: session::Token = serde_json::from_str(&body).unwrap();
+            debug!("Fetched token {}. New token is valid for {} seconds", token.access_token,  token.expires_in);
+            Ok(token)
         }
-    }).await.unwrap()
+        Err(e) => Err(format!("Error while fetching token. Error code: {}, meg: {}", e.status().unwrap(), e.to_string()))
+    };
 }
 
 pub async fn get_all_accessories(token: String, uri: String) -> Result<Vec<Accessory>, String> {
-    tokio::task::spawn_blocking(move || {
-        let client = reqwest::blocking::Client::new();
-        debug!("Fetching accessories using token {}", token);
-        let result = client.get(format!("{}/api/accessories", uri))
-            .header("content-type", "application/json")
-            .header("Authorization", format!("Bearer {}", token))
-            .send();
+    let client = reqwest::Client::new();
+    debug!("Fetching accessories using token {}", token);
+    let result = client.get(format!("{}/api/accessories", uri))
+        .header("content-type", "application/json")
+        .header("Authorization", format!("Bearer {}", token))
+        .send().await;
 
-        match result {
-            Ok(response) => {
-                if !response.status().is_success() {
-                    error!("Error while fetching token. Error code: {}", response.status());
-                    return Err(format!("Error while fetching accessories. Error code: {}", response.status()))
-                }
-
-                let body = response.text().unwrap();
-                debug!("Accessories JSON: {}", body);
-                let accessories: Vec<Accessory> = serde_json::from_str(&body).unwrap();
-                debug!("Fetched {} accessories", accessories.len());
-                Ok(accessories)
+    match result {
+        Ok(response) => {
+            if !response.status().is_success() {
+                error!("Error while fetching token. Error code: {}", response.status());
+                return Err(format!("Error while fetching accessories. Error code: {}", response.status()));
             }
-            Err(e) => Err(e.to_string())
+
+            let body = response.text().await.unwrap();
+            debug!("Accessories JSON: {}", body);
+            let accessories: Vec<Accessory> = serde_json::from_str(&body).unwrap();
+            debug!("Fetched {} accessories", accessories.len());
+            Ok(accessories)
         }
-    }).await.unwrap()
+        Err(e) => Err(e.to_string())
+    }
 }
 
 pub async fn restart(token: String, uri: String) -> Result<bool, String> {
-    tokio::task::spawn_blocking(move || {
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::Client::new();
         debug!("Warning: restarting homebridge server using token {} ", token);
         let response_result = client.put(format!("{}/api/server/restart", uri))
             .header("content-type", "application/json")
             .header("Authorization", format!("Bearer {}", token))
             .body("{}")
-            .send();
+            .send().await;
 
         match response_result {
             Ok(response) => {
                 if response.status().is_success() {
                     return Ok(true);
                 }
-                Err(format!("{}", response.text().unwrap().as_str()))
-            },
+                Err(format!("{}", response.text().await.unwrap().as_str()))
+            }
             Err(e) => Err(e.to_string())
         }
-    }).await.unwrap()
 }
