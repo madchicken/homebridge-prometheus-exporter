@@ -1,21 +1,39 @@
-use std::sync::Mutex;
+use std::net::SocketAddr;
+use std::sync::{Arc};
+use std::sync::atomic::AtomicU64;
+use axum::extract::State;
+use axum::response::IntoResponse;
+use axum::Router;
+use axum::routing::{get, post};
+use axum::http::{header, StatusCode, HeaderMap};
 use inflector::cases::snakecase::to_snake_case;
-use prometheus_client::{encoding::text::encode, registry::Registry};
+use prometheus_client::{registry::Registry};
+use prometheus_client::encoding::text::encode;
 use prometheus_client::metrics::family::Family;
-use prometheus_client::metrics::gauge::Gauge;
-use actix_web::{web, App, HttpServer, HttpResponse, web::Data, HttpRequest};
-use actix_web::http::header::HeaderMap;
-use actix_web::http::StatusCode;
+use prometheus_client::metrics::gauge::{Gauge};
 
 use crate::{Config, homebridge};
 use crate::homebridge::session::{Session};
 
 use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
+use tokio::sync::Mutex;
+use tokio::signal;
+use tower_http::compression::CompressionLayer;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AuthorizationKeys {
     keys: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ErrorResponse {
+    error: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct SuccessResponse {
+    result: String,
 }
 
 fn load_keys(keyfile_path: String) -> AuthorizationKeys {
@@ -36,33 +54,85 @@ fn load_keys(keyfile_path: String) -> AuthorizationKeys {
     }
 }
 
+#[derive(Clone)]
+pub struct AppState {
+    session: Arc<Mutex<Session>>,
+    config: Arc<Config>,
+    keys: Arc<AuthorizationKeys>,
+    registry: Arc<Mutex<Registry>>,
+}
+
 /// Start a HTTP server to report metrics.
-pub async fn start_metrics_server(config: Config) -> std::io::Result<()> {
+pub async fn start_metrics_server(config: Config) {
     debug!("Creating session");
+    let inner_registry = <Registry>::with_prefix(
+        config
+            .prefix
+            .clone()
+            .unwrap_or(String::from("homebridge"))
+            .as_str(),
+    );
     let port = config.port;
     let password = config.password.clone();
     let username = config.username.clone();
     let uri = config.uri.clone();
     let keys: AuthorizationKeys = load_keys(config.keyfile.clone());
-    let shared_config = Data::new(config);
-    let shared_keys = Data::new(keys);
-    let session: Session = Session::new(username, password, uri);
+    let shared_config = Arc::new(config);
+    let shared_keys = Arc::new(keys);
+    let session = Arc::new(Mutex::new(Session::new(username, password, uri)));
     debug!("Session created {:?}", session);
-    let shared_session = Data::new(Mutex::new(session));
 
-    let bind_address = "0.0.0.0";
-    info!("Serving /metrics at http://{}:{}", bind_address, port);
-    HttpServer::new(move || {
-        App::new()
-            .app_data(shared_session.clone())
-            .app_data(shared_config.clone())
-            .app_data(shared_keys.clone())
-            .service(web::resource("/metrics").route(web::get().to(metrics_get)))
-            .service(web::resource("/restart").route(web::post().to(restart)))
-    })
-        .bind((bind_address, port))?
-        .run()
+    let registry = Arc::new(Mutex::new(inner_registry));
+
+    let state = AppState {
+        session,
+        registry,
+        config: shared_config,
+        keys: shared_keys,
+    };
+
+    let routes = Router::new()
+        .route("/ping", get(ping))
+        .route("/metrics", get(metrics))
+        .route("/restart", post(restart))
+        .layer(CompressionLayer::new())
+        .with_state(state);
+
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    info!("Starting main web server, listening on {}", addr);
+
+    axum::Server::bind(&addr)
+        .serve(routes.into_make_service())
+        .with_graceful_shutdown(shutdown_signal())
         .await
+        .unwrap();
+}
+
+pub async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+        let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    println!("signal received, starting graceful shutdown");
 }
 
 fn check_bearer_token(headers: &HeaderMap, keys: &Vec<String>) -> bool {
@@ -77,44 +147,70 @@ fn check_bearer_token(headers: &HeaderMap, keys: &Vec<String>) -> bool {
             return match index {
                 Some(_) => true,
                 None => false
-            }
+            };
         }
         return false;
     }
     return false;
 }
 
-async fn restart(session: Data<Mutex<Session>>, config: Data<Config>, keys: Data<AuthorizationKeys>, req: HttpRequest) -> actix_web::Result<HttpResponse> {
-    match check_bearer_token(req.headers(), &keys.keys) {
+async fn restart(headers: HeaderMap, State(state): State<AppState>) -> impl IntoResponse {
+    match check_bearer_token(&headers, &state.keys.keys) {
         true => {
-            let token = session.lock().unwrap().get_token().await.unwrap();
-            let result = homebridge::restart(token, config.uri.clone()).await;
+            let token = state.session.lock().await.get_token().await.unwrap();
+            let result = homebridge::restart(token, state.config.uri.clone()).await;
             match result {
-                Ok(_b) => Ok(HttpResponse::build(StatusCode::OK).body("done")),
-                Err(e) => Ok(HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e))
+                Ok(_b) => (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], serde_json::to_string(&SuccessResponse {
+                    result: "done".to_string(),
+                }).unwrap()).into_response(),
+                Err(e) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR,
+                     [(header::CONTENT_TYPE, "application/json")],
+                     serde_json::to_string(&ErrorResponse {
+                         error: format!("{}", e),
+                     }).unwrap()).into_response()
+                }
             }
         }
-        false => Ok(HttpResponse::build(StatusCode::UNAUTHORIZED).body("Unauthorized request, please provide a valid token."))
-    }
-}
-
-async fn metrics_get(session: Data<Mutex<Session>>, config: Data<Config>, _keys: Data<AuthorizationKeys>, _req: HttpRequest) -> actix_web::Result<HttpResponse> {
-    let mut buf = Vec::new();
-    let token = session.lock().unwrap().get_token().await.unwrap();
-    let result = build_registry(token, config.uri.clone(), config.prefix.clone()).await;
-    match result {
-        Ok(registry) => {
-            encode(&mut buf, &registry).unwrap();
-            Ok(HttpResponse::build(StatusCode::OK)
-                   .content_type("application/openmetrics-text; version=1.0.0; charset=utf-8")
-                   .body(std::str::from_utf8(buf.as_slice()).unwrap().to_string()))
+        false => {
+            (StatusCode::UNAUTHORIZED,
+             [(header::CONTENT_TYPE, "application/json")],
+             serde_json::to_string(&ErrorResponse {
+                 error: "Unauthorized request, please provide a valid token.".to_string(),
+             }).unwrap()).into_response()
         }
-        Err(e) => Ok(HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e))
     }
 }
 
-async fn build_registry(token: String, uri: String, prefix: String) -> Result<Registry, String> {
-    let mut registry = <Registry>::with_prefix(prefix.as_str());
+
+async fn ping(State(_state): State<AppState>) -> impl IntoResponse {
+    (StatusCode::OK, String::from("PONG"))
+}
+
+async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let mut guard = state.session.lock().await;
+    let token_result = guard.get_token().await;
+    match token_result {
+        Ok(token) => {
+            let result = build_registry(
+                token, state.config.uri.clone(),
+                state.registry.clone(),
+            ).await;
+            let reg_guard = state.registry.lock().await;
+            match result {
+                Ok(_) => {
+                    let mut buffer = String::new();
+                    encode(&mut buffer, &reg_guard).unwrap();
+                    (StatusCode::OK, buffer)
+                }
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    }
+}
+
+async fn build_registry(token: String, uri: String, registry: Arc<Mutex<Registry>>) -> Result<(), String> {
     let accessories_result = homebridge::get_all_accessories(token, uri.to_string()).await;
     match accessories_result {
         Ok(accessories) => {
@@ -123,20 +219,20 @@ async fn build_registry(token: String, uri: String, prefix: String) -> Result<Re
 
                 for service in services {
                     if !service.format.eq_ignore_ascii_case("string") { // ignore string service types
-                        let metric = Family::<Vec<(String, String)>, Gauge<f64>>::default();
+                        let metric = Family::<Vec<(String, String)>, Gauge<f64, AtomicU64>>::default();
                         let metric_name = format!("{}_{}", to_snake_case(&service.service_type.to_string()), to_snake_case(&service.type_.to_string()));
                         let value_as_float = service.value.as_f64().unwrap_or_else(|| 0.0);
-                        registry.register(
+                        registry.lock().await.register(
                             metric_name.to_string(),
                             format!("{}", service.description),
-                            Box::new(metric.clone()),
+                            metric.clone(),
                         );
 
                         metric.get_or_create(&vec![("name".to_owned(), to_snake_case(&service.service_name.to_string()).to_owned())]).set(value_as_float);
                     }
                 }
             }
-            Ok(registry)
+            Ok(())
         }
         Err(e) => {
             error!("{}", e);
@@ -147,7 +243,8 @@ async fn build_registry(token: String, uri: String, prefix: String) -> Result<Re
 
 #[cfg(test)]
 mod tests {
-    use actix_web::http::header::{HeaderMap, HeaderName};
+    use axum::headers::HeaderName;
+    use axum::http::{HeaderMap};
     use reqwest::header::HeaderValue;
     use crate::httpserver::check_bearer_token;
 
