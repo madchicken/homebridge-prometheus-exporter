@@ -59,19 +59,11 @@ pub struct AppState {
     session: Arc<Mutex<Session>>,
     config: Arc<Config>,
     keys: Arc<AuthorizationKeys>,
-    registry: Arc<Mutex<Registry>>,
 }
 
 /// Start a HTTP server to report metrics.
 pub async fn start_metrics_server(config: Config) {
     debug!("Creating session");
-    let inner_registry = <Registry>::with_prefix(
-        config
-            .prefix
-            .clone()
-            .unwrap_or(String::from("homebridge"))
-            .as_str(),
-    );
     let port = config.port;
     let password = config.password.clone();
     let username = config.username.clone();
@@ -82,11 +74,9 @@ pub async fn start_metrics_server(config: Config) {
     let session = Arc::new(Mutex::new(Session::new(username, password, uri)));
     debug!("Session created {:?}", session);
 
-    let registry = Arc::new(Mutex::new(inner_registry));
 
     let state = AppState {
         session,
-        registry,
         config: shared_config,
         keys: shared_keys,
     };
@@ -100,7 +90,7 @@ pub async fn start_metrics_server(config: Config) {
 
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("Starting main web server, listening on {}", addr);
+    info!("Starting main web server, listening on http://{}", addr);
 
     axum::Server::bind(&addr)
         .serve(routes.into_make_service())
@@ -203,15 +193,13 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     let token_result = guard.get_token().await;
     match token_result {
         Ok(token) => {
-            let result = build_registry(
-                token, state.config.uri.clone(),
-                state.registry.clone(),
-            ).await;
-            let reg_guard = state.registry.lock().await;
+            let prefix = state.config.prefix.clone().unwrap_or("homebridge".to_string()).clone();
+            let uri = state.config.uri.clone();
+            let result = build_registry(token, uri, prefix).await;
             match result {
-                Ok(_) => {
+                Ok(registry) => {
                     let mut buffer = String::new();
-                    encode(&mut buffer, &reg_guard).unwrap();
+                    encode(&mut buffer, &registry).unwrap();
                     (StatusCode::OK, buffer)
                 }
                 Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
@@ -221,7 +209,8 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-async fn build_registry(token: String, uri: String, registry: Arc<Mutex<Registry>>) -> Result<(), String> {
+async fn build_registry(token: String, uri: String, prefix: String) -> Result<Registry, String> {
+    let mut registry = <Registry>::with_prefix(prefix.as_str());
     let accessories_result = homebridge::get_all_accessories(token, uri.to_string()).await;
     match accessories_result {
         Ok(accessories) => {
@@ -233,7 +222,7 @@ async fn build_registry(token: String, uri: String, registry: Arc<Mutex<Registry
                         let metric = Family::<Vec<(String, String)>, Gauge<f64, AtomicU64>>::default();
                         let metric_name = format!("{}_{}", to_snake_case(&service.service_type.to_string()), to_snake_case(&service.type_.to_string()));
                         let value_as_float = service.value.as_f64().unwrap_or_else(|| 0.0);
-                        registry.lock().await.register(
+                        registry.register(
                             metric_name.to_string(),
                             format!("{}", service.description),
                             metric.clone(),
@@ -243,7 +232,7 @@ async fn build_registry(token: String, uri: String, registry: Arc<Mutex<Registry
                     }
                 }
             }
-            Ok(())
+            Ok(registry)
         }
         Err(e) => {
             error!("{}", e);
