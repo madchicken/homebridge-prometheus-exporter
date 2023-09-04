@@ -29,9 +29,9 @@ pub mod session {
         pub fn new(username: String, password: String, uri: String) -> Session {
             Session {
                 token: String::from(""),
-                username: username.to_string(),
-                password: password.to_string(),
-                uri: uri.to_string(),
+                username,
+                password,
+                uri,
                 expires_in: 0,
                 created_at: SystemTime::now(),
             }
@@ -39,7 +39,10 @@ pub mod session {
 
         pub fn is_valid(&self) -> bool {
             if !self.token.is_empty() {
-                let duration = SystemTime::now().duration_since(self.created_at).unwrap().as_secs();
+                let duration = SystemTime::now()
+                    .duration_since(self.created_at)
+                    .unwrap()
+                    .as_secs();
                 let expiration = Duration::from_secs(self.expires_in).as_secs();
                 duration.le(&expiration) // duration is valid if less than expiration
             } else {
@@ -56,14 +59,15 @@ pub mod session {
                 let result = login(username, password, uri).await;
                 match result {
                     Ok(t) => {
-                        self.token.replace_range(..self.token.len(), t.access_token.as_str());
+                        self.token
+                            .replace_range(..self.token.len(), t.access_token.as_str());
                         self.expires_in = t.expires_in;
                         self.created_at = SystemTime::now();
                     }
                     Err(e) => {
                         self.token.replace_range(..self.token.len(), "");
                         error!("{}", e);
-                        return Err(format!("{}", e));
+                        return Err(e);
                     }
                 }
             }
@@ -127,46 +131,71 @@ pub struct Accessory {
     pub unique_id: String,
 }
 
-pub async fn login(username: String, password: String, uri: String) -> Result<session::Token, String> {
+pub async fn login(
+    username: String,
+    password: String,
+    uri: String,
+) -> Result<session::Token, String> {
     let login = json!({
-            "username": username,
-            "password": password,
-            "otp": "123"
-        });
+        "username": username,
+        "password": password,
+        "otp": "123"
+    });
     let client = reqwest::Client::new();
 
-    let response_result = client.post(format!("{}/api/auth/login", uri))
+    let response_result = client
+        .post(format!("{}/api/auth/login", uri))
         .header("content-type", "application/json")
-        .body(reqwest::Body::from(login.to_string())).send().await;
+        .body(reqwest::Body::from(login.to_string()))
+        .send()
+        .await;
 
-    return match response_result {
+    match response_result {
         Ok(response) => {
             if !response.status().is_success() {
-                return Err(format!("Error while fetching token. Error code: {}", response.status()));
+                return Err(format!(
+                    "Error while fetching token. Error code: {}",
+                    response.status()
+                ));
             }
 
             let body = response.text().await.unwrap();
             let token: session::Token = serde_json::from_str(&body).unwrap();
-            debug!("Fetched token {}. New token is valid for {} seconds", token.access_token,  token.expires_in);
+            debug!(
+                "Fetched token {}. New token is valid for {} seconds",
+                token.access_token, token.expires_in
+            );
             Ok(token)
         }
-        Err(e) => Err(format!("Error while fetching token. Error code: {}, meg: {}", e.status().unwrap(), e.to_string()))
-    };
+        Err(e) => Err(format!(
+            "Error while fetching token. Error code: {}, meg: {}",
+            e.status().unwrap(),
+            e
+        )),
+    }
 }
 
 pub async fn get_all_accessories(token: String, uri: String) -> Result<Vec<Accessory>, String> {
     let client = reqwest::Client::new();
     debug!("Fetching accessories using token {}", token);
-    let result = client.get(format!("{}/api/accessories", uri))
+    let result = client
+        .get(format!("{}/api/accessories", uri))
         .header("content-type", "application/json")
         .header("Authorization", format!("Bearer {}", token))
-        .send().await;
+        .send()
+        .await;
 
     match result {
         Ok(response) => {
             if !response.status().is_success() {
-                error!("Error while fetching token. Error code: {}", response.status());
-                return Err(format!("Error while fetching accessories. Error code: {}", response.status()));
+                error!(
+                    "Error while fetching token. Error code: {}",
+                    response.status()
+                );
+                return Err(format!(
+                    "Error while fetching accessories. Error code: {}",
+                    response.status()
+                ));
             }
 
             let body = response.text().await.unwrap();
@@ -175,26 +204,31 @@ pub async fn get_all_accessories(token: String, uri: String) -> Result<Vec<Acces
             debug!("Fetched {} accessories", accessories.len());
             Ok(accessories)
         }
-        Err(e) => Err(e.to_string())
+        Err(e) => Err(e.to_string()),
     }
 }
 
 pub async fn restart(token: String, uri: String) -> Result<bool, String> {
-        let client = reqwest::Client::new();
-        debug!("Warning: restarting homebridge server using token {} ", token);
-        let response_result = client.put(format!("{}/api/server/restart", uri))
-            .header("content-type", "application/json")
-            .header("Authorization", format!("Bearer {}", token))
-            .body("{}")
-            .send().await;
+    let client = reqwest::Client::new();
+    debug!(
+        "Warning: restarting homebridge server using token {} ",
+        token
+    );
+    let response_result = client
+        .put(format!("{}/api/server/restart", uri))
+        .header("content-type", "application/json")
+        .header("Authorization", format!("Bearer {}", token))
+        .body("{}")
+        .send()
+        .await;
 
-        match response_result {
-            Ok(response) => {
-                if response.status().is_success() {
-                    return Ok(true);
-                }
-                Err(format!("{}", response.text().await.unwrap().as_str()))
+    match response_result {
+        Ok(response) => {
+            if response.status().is_success() {
+                return Ok(true);
             }
-            Err(e) => Err(e.to_string())
+            Err(response.text().await.unwrap())
         }
+        Err(e) => Err(e.to_string()),
+    }
 }

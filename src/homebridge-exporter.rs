@@ -1,25 +1,25 @@
 extern crate core;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
-use std::sync::{mpsc};
-use std::sync::mpsc::{Sender};
-use clap::{Parser};
+use clap::Parser;
 use log::{debug, LevelFilter};
+use std::sync::mpsc;
+use std::sync::mpsc::Sender;
 
-use tokio::join;
 use std::str::FromStr;
+use tokio::join;
 
-use crate::Commands::Exit;
 use crate::httpserver::start_metrics_server;
+use crate::Commands::Exit;
 
-mod httpserver;
 mod homebridge;
+mod httpserver;
 
 #[derive(PartialEq)]
 pub enum Commands {
     Exit,
 }
-
 
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
@@ -50,15 +50,13 @@ pub struct Config {
     cpu_threads: Option<usize>,
 }
 
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: Config = Config::parse();
 
-    let log_level = if config.debug == true { "debug" } else { "info" };
+    let log_level = if config.debug { "debug" } else { "info" };
     env_logger::builder()
         .filter_level(LevelFilter::from_str(log_level).unwrap())
         .init();
-
 
     debug!("Parsed command line: {:?}", config);
 
@@ -70,10 +68,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .unwrap();
 
-
     let (tx, _rx) = mpsc::channel::<Commands>();
     let sigkill_loop = runtime.spawn(wait_for_interruption(tx));
-
 
     let plot_server_thread = runtime.spawn(start_metrics_server(config));
     runtime.block_on(async {
@@ -84,11 +80,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn wait_for_interruption(tx: Sender<Commands>) {
-    match tokio::signal::ctrl_c().await {
-        Ok(_) => {
-            info!("received Ctrl+C!");
-            tx.send(Exit).unwrap();
-        }
-        Err(_) => {}
+    if tokio::signal::ctrl_c().await.is_ok() {
+        info!("received Ctrl+C!");
+        tx.send(Exit).unwrap();
     };
 }
