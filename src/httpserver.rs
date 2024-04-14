@@ -1,25 +1,25 @@
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+
 use axum::extract::State;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
 use axum::Router;
+use axum::routing::{get, post};
 use inflector::cases::snakecase::to_snake_case;
 use prometheus_client::encoding::text::encode;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
-use std::net::SocketAddr;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
-
-use crate::homebridge::session::Session;
-use crate::{homebridge, Config};
-
 use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
 use tokio::signal;
 use tokio::sync::Mutex;
 use tower_http::compression::CompressionLayer;
+
+use crate::{Config, homebridge};
+use crate::homebridge::session::Session;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AuthorizationKeys {
@@ -86,11 +86,11 @@ pub async fn start_metrics_server(config: Config) {
         .layer(CompressionLayer::new())
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("Starting main web server, listening on http://{}", addr);
-
-    axum::Server::bind(&addr)
-        .serve(routes.into_make_service())
+    let address = format!("0.0.0.0:{}", port);
+    let addr: SocketAddr = address.parse().unwrap();
+    info!("listening on {}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, routes)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
@@ -255,10 +255,11 @@ async fn build_registry(token: String, uri: String, prefix: String) -> Result<Re
 
 #[cfg(test)]
 mod tests {
-    use crate::httpserver::check_bearer_token;
     use axum::headers::HeaderName;
     use axum::http::HeaderMap;
     use reqwest::header::HeaderValue;
+
+    use crate::httpserver::check_bearer_token;
 
     #[test]
     fn check_bearer_token_find_the_right_token() {
