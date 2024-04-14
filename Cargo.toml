@@ -1,23 +1,29 @@
 [package]
 name = "homebridge-exporter"
-version = "1.1.1"
+version = "1.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "3.2.23", features = ["derive"] }
-actix-web = "4"
-tokio = { version = "1.21.2", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml = "0.8"
-prometheus-client = { version = "0.18.1" }
+axum = { version = "0.7.5", features = ["tokio", "query"] }
+clap = { version = "4.5.4", features = ["derive"] }
+tokio = { version = "1.37.0", features = ["full"]}
+tower-http = { version = "0.5.2", features = ["compression-gzip"] }
+reqwest = { version = "0.12.3", features = ["json", "blocking"] }
+serde = { version = "1.0.183", features = ["derive"] }
+serde_json = "1.0.105"
+serde_yaml = "0.9.34+deprecated"
+prometheus-client = { version = "0.22.2" }
 Inflector = "0.11.4"
-reqwest = { version = "0.11.12", features = ["blocking"] }
-openssl = { version = "0.10", features = ["vendored"] }
-env_logger = "0.10.0"
+openssl = { version = "0.10.64", features = ["vendored"] }
+openssl-sys = { version = "0.9.102" }
+openssl-probe = { version = "0.1.5" }
+env_logger = "0.11.3"
 log = "0.4.17"
+
+[features]
+vendored-openssl = ["openssl/vendored"]
 
 [[bin]]
 name = "homebridge-exporter"

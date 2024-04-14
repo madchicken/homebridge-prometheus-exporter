@@ -1,2 +1,5 @@
 [net]
 git-fetch-with-cli = true
+
+[target.armv7-unknown-linux-gnueabihf]
+linker = "armv7-rpi2-linux-gnueabihf-gcc"
