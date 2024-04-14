@@ -1,7 +1,7 @@
 FROM rust:latest
 
 RUN apt update && apt upgrade -y
-RUN apt install -y g++-arm-linux-gnueabihf libc6-dev-armhf-cross openssl libssl-dev pkg-config
+RUN apt install -y g++-arm-linux-gnueabihf libc6-dev-armhf-cross openssl libssl-dev pkg-config libudev-dev
 
 RUN rustup target add armv7-unknown-linux-gnueabihf
 RUN rustup toolchain install stable-armv7-unknown-linux-gnueabihf
@@ -9,6 +9,5 @@ RUN rustup toolchain install stable-armv7-unknown-linux-gnueabihf
 WORKDIR /app
 
 ENV CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc CC_armv7_unknown_Linux_gnueabihf=arm-linux-gnueabihf-gcc CXX_armv7_unknown_linux_gnueabihf=arm-linux-gnueabihf-g++
-ENV OPENSSL_NO_VENDOR=1
-RUN export OPENSSL_DIR=`openssl version -d`
+RUN export OPENSSL_DIR=/urs/local
 CMD ["cargo", "build", "--target", "armv7-unknown-linux-gnueabihf", "--release"]

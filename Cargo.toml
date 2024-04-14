@@ -7,16 +7,18 @@ edition = "2021"
 
 [dependencies]
 axum = { version = "0.7.5", features = ["tokio", "query"] }
-clap = { version = "4.1.8", features = ["derive"] }
-tokio = { version = "1.25.0", features = ["full"]}
+clap = { version = "4.5.4", features = ["derive"] }
+tokio = { version = "1.37.0", features = ["full"]}
 tower-http = { version = "0.5.2", features = ["compression-gzip"] }
 reqwest = { version = "0.12.3", features = ["json", "blocking"] }
 serde = { version = "1.0.183", features = ["derive"] }
-serde_json = "1.0.104"
-serde_yaml = "0.9.19"
+serde_json = "1.0.105"
+serde_yaml = "0.9.34+deprecated"
 prometheus-client = { version = "0.22.2" }
 Inflector = "0.11.4"
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { version = "0.10.64", features = ["vendored"] }
+openssl-sys = { version = "0.9.102" }
+openssl-probe = { version = "0.1.5" }
 env_logger = "0.11.3"
 log = "0.4.17"
 
