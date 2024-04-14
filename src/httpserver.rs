@@ -255,8 +255,7 @@ async fn build_registry(token: String, uri: String, prefix: String) -> Result<Re
 
 #[cfg(test)]
 mod tests {
-    use axum::headers::HeaderName;
-    use axum::http::HeaderMap;
+    use axum::http::{HeaderMap, HeaderName};
     use reqwest::header::HeaderValue;
 
     use crate::httpserver::check_bearer_token;
